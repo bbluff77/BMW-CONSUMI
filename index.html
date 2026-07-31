@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <title>BMW 440i - Registro Consumi</title>
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+    <style>
+        :root {
+            --bmw-blue: #0066B1;
+            --bmw-light-blue: #88B8E6;
+            --bmw-red: #E32832;
+            --bg-color: #f4f4f9;
+            --card-bg: #ffffff;
+            --text-main: #333333;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 15px;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .header h1 {
+            margin: 0;
+            color: var(--bmw-blue);
+            font-size: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+        .logo-placeholder {
+            width: 40px;
+            height: 40px;
+            background: conic-gradient(from 90deg, var(--bmw-light-blue) 0 90deg, white 90deg 180deg, var(--bmw-light-blue) 180deg 270deg, white 270deg 360deg);
+            border: 4px solid var(--text-main);
+            border-radius: 50%;
+            display: inline-block;
+        }
+        .card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 15px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            margin-bottom: 15px;
+        }
+        input, button {
+            width: 100%;
+            padding: 12px;
+            margin: 8px 0;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            box-sizing: border-box;
+            font-size: 16px;
+        }
+        button {
+            background-color: var(--bmw-blue);
+            color: white;
+            border: none;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        button.export-btn { background-color: #28a745; }
+        button.import-btn { background-color: #6c757d; }
+        button.danger-btn { background-color: #dc3545; }
+        .history-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+            font-size: 13px;
+        }
+        .history-table th, .history-table td {
+            border-bottom: 1px solid #ddd;
+            padding: 8px 4px;
+            text-align: center;
+        }
+        .history-table th { color: var(--bmw-blue); }
+        .history-table td:first-child, .history-table th:first-child { text-align: left; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1><span class="logo-placeholder"></span> BMW 440i</h1>
+        <p>Registro Consumi e Rifornimenti</p>
+    </div>
+
+    <div class="card" style="background: #eef6fc; border: 1px solid var(--bmw-light-blue);">
+        <h3 style="margin-top:0; color: var(--bmw-blue);">Importa i tuoi 199 record</h3>
+        <p style="font-size: 12px; color: #555;">Seleziona il file Excel con lo storico per caricarlo permanentemente nell'app.</p>
+        <input type="file" id="importFile" accept=".xlsx, .xls, .csv">
+        <button class="import-btn" onclick="importExcel()">Carica Storico Completo</button>
+    </div>
+
+    <div class="card">
+        <h3>Nuovo Rifornimento</h3>
+        <input type="date" id="data" required>
+        <input type="number" id="km" placeholder="Contachilometri totale (es. 89500)" required>
+        <input type="number" id="costo" placeholder="Costo totale (€) (es. 75.50)" step="0.01" required>
+        <input type="number" id="prezzo_litro" placeholder="Costo al litro (€/lt) (es. 1.849)" step="0.001" required>
+        <input type="text" id="note" placeholder="Note (es. 100 ottani)">
+        <button onclick="salvaDati()">Salva Rifornimento</button>
+    </div>
+
+    <div class="card">
+        <button class="export-btn" onclick="exportExcel()">Esporta tutto in Excel (.xlsx)</button>
+        <button class="danger-btn" onclick="resetDati()" style="margin-top: 5px;">Svuota Dati</button>
+        
+        <h3>Ultimi Rifornimenti</h3>
+        <table class="history-table">
+            <thead>
+                <tr>
+                    <th>Data</th>
+                    <th>Km Tot.</th>
+                    <th>Percorsi</th>
+                    <th>Litri</th>
+                    <th>Km/L</th>
+                </tr>
+            </thead>
+            <tbody id="tabellaDati"></tbody>
+        </table>
+    </div>
+
+    <script>
+        function parseNumber(val) {
+            if (val === undefined || val === null || val === '') return 0;
+            if (typeof val === 'number') return val;
+            let s = val.toString().replace(/[^0-9,\.-]/g, '');
+            if (s === '') return 0;
+            if (s.includes(',') && s.lastIndexOf(',') > s.lastIndexOf('.')) {
+                s = s.replace(/\./g, '').replace(',', '.');
+            } else {
+                s = s.replace(/,/g, '');
+            }
+            let n = parseFloat(s);
+            return isNaN(n) ? 0 : n;
+        }
+
+        function formattaDataItaliana(val) {
+            if (!val) return '';
+            let d = null;
+            if (typeof val === 'number') {
+                d = new Date(Math.round((val - (25567 + 2)) * 86400 * 1000));
+            } else {
+                let s = val.toString().trim();
+                if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+                    let p = s.split('-');
+                    return `${p[2]}/${p[1]}/${p[0]}`;
+                }
+                d = new Date(s);
+            }
+            if (d && !isNaN(d.getTime())) {
+                let gg = String(d.getDate()).padStart(2, '0');
+                let mm = String(d.getMonth() + 1).padStart(2, '0');
+                let aaaa = d.getFullYear();
+                return `${gg}/${mm}/${aaaa}`;
+            }
+            return val.toString();
+        }
+
+        function caricaDaStorage() {
+            try { return JSON.parse(localStorage.getItem('consumi_bmw440')) || []; }
+            catch (e) { return []; }
+        }
+
+        function salvaInStorage(dati) {
+            try { localStorage.setItem('consumi_bmw440', JSON.stringify(dati)); }
+            catch (e) { alert("Errore nel salvataggio dei dati."); }
+        }
+
+        let consumiBMW = caricaDaStorage();
+
+        function aggiornaTabella() {
+            const tbody = document.getElementById('tabellaDati');
+            if (!tbody) return;
+            
+            tbody.innerHTML = '';
+            let daMostrare = [...consumiBMW].reverse().slice(0, 20);
+
+            if (daMostrare.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:#888;">Nessun dato presente. Carica lo storico sopra.</td></tr>';
+                return;
+            }
+
+            daMostrare.forEach((record) => {
+                let kml = (record.km_percorsi > 0 && record.litri > 0) 
+                    ? (record.km_percorsi / record.litri).toFixed(2) 
+                    : '-';
+                
+                let litriStr = record.litri > 0 ? record.litri.toFixed(1) : '-';
+                let kmPercStr = record.km_percorsi > 0 ? record.km_percorsi : '-';
+                let nota = record.note ? '📄' : '';
+                let dataIt = formattaDataItaliana(record.data);
+
+                tbody.innerHTML += `
+                    <tr title="${record.note || ''}">
+                        <td>${dataIt || '-'}</td>
+                        <td>${record.km || '-'}</td>
+                        <td>${kmPercStr}</td>
+                        <td>${litriStr}</td>
+                        <td><strong>${kml}</strong> ${nota}</td>
+                    </tr>
+                `;
+            });
+        }
+
+        function salvaDati() {
+            let rawData = document.getElementById('data').value;
+            let data = formattaDataItaliana(rawData);
+            let km = parseFloat(document.getElementById('km').value);
+            let costo = parseFloat(document.getElementById('costo').value);
+            let prezzo_litro = parseFloat(document.getElementById('prezzo_litro').value);
+            let note = document.getElementById('note').value;
+
+            if(!rawData || isNaN(km) || isNaN(costo) || isNaN(prezzo_litro) || prezzo_litro <= 0) {
+                alert("Compila tutti i campi correttamente.");
+                return;
+            }
+
+            // Calcolo automatico dei litri
+            let litri = costo / prezzo_litro;
+
+            let km_percorsi = 0;
+            if(consumiBMW.length > 0) {
+                let ultimoKm = parseFloat(consumiBMW[consumiBMW.length - 1].km);
+                if (!isNaN(ultimoKm) && km > ultimoKm) {
+                    km_percorsi = km - ultimoKm;
+                }
+            }
+
+            let km_litro = litri > 0 ? km_percorsi / litri : 0;
+
+            let nuovoRecord = { data, km, km_percorsi, litri, costo, prezzo_litro, km_litro, note };
+            consumiBMW.push(nuovoRecord);
+            
+            salvaInStorage(consumiBMW);
+            alert("Rifornimento salvato con successo!");
+            aggiornaTabella();
+            
+            document.getElementById('costo').value = '';
+            document.getElementById('prezzo_litro').value = '';
+            document.getElementById('note').value = '';
+        }
+
+        function exportExcel() {
+            if(consumiBMW.length === 0) {
+                alert("Nessun dato da esportare.");
+                return;
+            }
+            const worksheet = XLSX.utils.json_to_sheet(consumiBMW);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "Consumi BMW 440i");
+            XLSX.writeFile(workbook, "Storico_Consumi_BMW440.xlsx");
+        }
+
+        function importExcel() {
+            const inputDati = document.getElementById('importFile');
+            if(!inputDati.files || inputDati.files.length === 0) {
+                alert("Seleziona prima il file Excel con i dati storici.");
+                return;
+            }
+
+            const file = inputDati.files[0];
+            const reader = new FileReader();
+
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, {type: 'array', cellDates: true});
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    
+                    const jsonData = XLSX.utils.sheet_to_json(worksheet, {raw: false});
+                    
+                    if(jsonData.length === 0) {
+                        alert("Il file Excel selezionato sembra vuoto.");
+                        return;
+                    }
+
+                    let nuoviDati = jsonData.map(row => {
+                        let r = { data: '', km: 0, km_percorsi: 0, litri: 0, costo: 0, prezzo_litro: 0, km_litro: 0, note: '' };
+                        
+                        for (let key in row) {
+                            let k = key.trim().toLowerCase();
+                            let val = row[key];
+
+                            if (k === 'data') r.data = formattaDataItaliana(val);
+                            else if (k === 'conta km' || k === 'km') {
+                                if (r.km === 0) r.km = parseNumber(val);
+                            }
+                            else if (k === 'importo' || k === 'costo') r.costo = parseNumber(val);
+                            else if (k === '€/lt' || k === 'prezzo_litro') r.prezzo_litro = parseNumber(val);
+                            else if (k === 'litri') r.litri = parseNumber(val);
+                            else if (k === 'note') r.note = (val || '').toString();
+                        }
+                        
+                        // Calcola litri se mancanti ma ci sono costo e prezzo al litro
+                        if (r.litri === 0 && r.costo > 0 && r.prezzo_litro > 0) {
+                            r.litri = r.costo / r.prezzo_litro;
+                        }
+                        
+                        return r;
+                    }).filter(r => r.data !== '' && r.km > 0);
+
+                    // Ricalcolo sequenziale pulito
+                    for (let i = 0; i < nuoviDati.length; i++) {
+                        if (i > 0 && nuoviDati[i].km > nuoviDati[i-1].km) {
+                            nuoviDati[i].km_percorsi = nuoviDati[i].km - nuoviDati[i-1].km;
+                        }
+                        if (nuoviDati[i].litri === 0 && nuoviDati[i].costo > 0 && nuoviDati[i].prezzo_litro > 0) {
+                            nuoviDati[i].litri = nuoviDati[i].costo / nuoviDati[i].prezzo_litro;
+                        }
+                        if (nuoviDati[i].km_percorsi > 0 && nuoviDati[i].litri > 0) {
+                            nuoviDati[i].km_litro = parseFloat((nuoviDati[i].km_percorsi / nuoviDati[i].litri).toFixed(2));
+                        }
+                    }
+
+                    consumiBMW = nuoviDati;
+                    salvaInStorage(consumiBMW);
+                    alert(`Importati con successo ${nuoviDati.length} rifornimenti storici!`);
+                    aggiornaTabella();
+
+                } catch (err) {
+                    alert("Errore durante la lettura del file: " + err.message);
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function resetDati() {
+            if (confirm("Vuoi cancellare i dati memorizzati e ripartire da zero?")) {
+                localStorage.removeItem('consumi_bmw440');
+                consumiBMW = [];
+                aggiornaTabella();
+            }
+        }
+
+        aggiornaTabella();
+    </script>
+</body>
+</html>
