@@ -417,23 +417,41 @@
         }
 
         function exportCSV() {
-            if(consumiBMW.length === 0) {
+            if (consumiBMW.length === 0) {
                 alert("Nessun dato da esportare.");
                 return;
             }
-            const worksheet = XLSX.utils.json_to_sheet(consumiBMW);
-            const csvContent = XLSX.utils.sheet_to_csv(worksheet, { FS: ';' });
 
-            // Anche qui: data URI in base64, niente blob.
-            const base64 = btoa(unescape(encodeURIComponent(csvContent)));
-            const dataUri = 'data:text/csv;charset=utf-8;base64,' + base64;
+            const formatNumero = (val, decimali) => {
+                if (val === null || val === undefined || isNaN(val)) return "";
+                return Number(val).toFixed(decimali).replace('.', ',');
+            };
 
+            const headers = [
+                'data','km','km_percorsi','litri','costo','prezzo_litro','km_litro','note'
+            ];
+
+            const righe = consumiBMW.map(r => [
+                r.data || '',
+                r.km || '',
+                r.km_percorsi || 0,
+                formatNumero(r.litri, 8),
+                formatNumero(r.costo, 2),
+                formatNumero(r.prezzo_litro, 3),
+                formatNumero(r.km_litro, 2),
+                '"' + String(r.note || '').replace(/"/g,'""') + '"'
+            ].join(';'));
+
+            const csvContent = '\uFEFF' + headers.join(';') + '\n' + righe.join('\n');
+
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement('a');
-            link.href = dataUri;
+            link.href = URL.createObjectURL(blob);
             link.download = 'Storico_Consumi_BMW440.csv';
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
+            URL.revokeObjectURL(link.href);
         }
 
         function importExcel() {
