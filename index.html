@@ -74,15 +74,50 @@
             width: 100%;
             border-collapse: collapse;
             margin-top: 10px;
-            font-size: 13px;
+            font-size: 12px;
         }
         .history-table th, .history-table td {
             border-bottom: 1px solid #ddd;
-            padding: 8px 4px;
+            padding: 8px 3px;
             text-align: center;
         }
         .history-table th { color: var(--bmw-blue); }
         .history-table td:first-child, .history-table th:first-child { text-align: left; }
+        .table-container {
+            max-height: 480px;
+            overflow-y: auto;
+            border: 1px solid #eee;
+            border-radius: 8px;
+        }
+        .history-table thead th {
+            position: sticky;
+            top: 0;
+            background: var(--card-bg);
+        }
+        .row-btn {
+            width: auto;
+            padding: 5px 8px;
+            margin: 2px;
+            font-size: 12px;
+            border-radius: 6px;
+        }
+        .edit-btn { background-color: var(--bmw-blue); }
+        .delete-btn { background-color: var(--bmw-red); }
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-overlay .card {
+            width: 90%;
+            max-width: 400px;
+            margin: 0;
+        }
     </style>
 </head>
 <body>
@@ -93,7 +128,7 @@
     </div>
 
     <div class="card" style="background: #eef6fc; border: 1px solid var(--bmw-light-blue);">
-        <h3 style="margin-top:0; color: var(--bmw-blue);">Importa i tuoi 199 record</h3>
+        <h3 style="margin-top:0; color: var(--bmw-blue);">Importa Storico Excel</h3>
         <p style="font-size: 12px; color: #555;">Seleziona il file Excel con lo storico per caricarlo permanentemente nell'app.</p>
         <input type="file" id="importFile" accept=".xlsx, .xls, .csv">
         <button class="import-btn" onclick="importExcel()">Carica Storico Completo</button>
@@ -103,29 +138,47 @@
         <h3>Nuovo Rifornimento</h3>
         <input type="date" id="data" required>
         <input type="number" id="km" placeholder="Contachilometri totale (es. 89500)" required>
-        <input type="number" id="costo" placeholder="Costo totale (€) (es. 75.50)" step="0.01" required>
-        <input type="number" id="prezzo_litro" placeholder="Costo al litro (€/lt) (es. 1.849)" step="0.001" required>
+        <input type="number" id="costo" placeholder="Costo totale (€) (es. 75,50)" step="0.01" required>
+        <input type="number" id="prezzo_litro" placeholder="Costo al litro (€/lt) (es. 1,849)" step="0.001" required>
         <input type="text" id="note" placeholder="Note (es. 100 ottani)">
         <button onclick="salvaDati()">Salva Rifornimento</button>
     </div>
 
     <div class="card">
-        <button class="export-btn" onclick="exportExcel()">Esporta tutto in Excel (.xlsx)</button>
+        <button class="export-btn" onclick="exportCSV()">Esporta tutto in CSV</button>
         <button class="danger-btn" onclick="resetDati()" style="margin-top: 5px;">Svuota Dati</button>
         
-        <h3>Ultimi Rifornimenti</h3>
-        <table class="history-table">
-            <thead>
-                <tr>
-                    <th>Data</th>
-                    <th>Km Tot.</th>
-                    <th>Percorsi</th>
-                    <th>Litri</th>
-                    <th>Km/L</th>
-                </tr>
-            </thead>
-            <tbody id="tabellaDati"></tbody>
-        </table>
+        <h3>Storico Rifornimenti (<span id="contatoreRecord">0</span>)</h3>
+        <div class="table-container">
+            <table class="history-table">
+                <thead>
+                    <tr>
+                        <th>Data</th>
+                        <th>Km Tot.</th>
+                        <th>Perc.</th>
+                        <th>Litri</th>
+                        <th>Totale</th>
+                        <th>Km/L</th>
+                        <th>Azioni</th>
+                    </tr>
+                </thead>
+                <tbody id="tabellaDati"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="modalModifica">
+        <div class="card">
+            <h3 style="margin-top:0;">Modifica Rifornimento</h3>
+            <input type="hidden" id="editIndex">
+            <input type="date" id="editData" required>
+            <input type="number" id="editKm" placeholder="Contachilometri totale" required>
+            <input type="number" id="editCosto" placeholder="Costo totale (€)" step="0.01" required>
+            <input type="number" id="editPrezzoLitro" placeholder="Costo al litro (€/lt)" step="0.001" required>
+            <input type="text" id="editNote" placeholder="Note">
+            <button onclick="salvaModifica()">Salva Modifiche</button>
+            <button style="background-color:#6c757d;" onclick="chiudiModifica()">Annulla</button>
+        </div>
     </div>
 
     <script>
@@ -180,35 +233,116 @@
         function aggiornaTabella() {
             const tbody = document.getElementById('tabellaDati');
             if (!tbody) return;
-            
-            tbody.innerHTML = '';
-            let daMostrare = [...consumiBMW].reverse().slice(0, 20);
 
-            if (daMostrare.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:#888;">Nessun dato presente. Carica lo storico sopra.</td></tr>';
+            document.getElementById('contatoreRecord').textContent = consumiBMW.length;
+            tbody.innerHTML = '';
+
+            if (consumiBMW.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#888;">Nessun dato presente. Carica lo storico sopra.</td></tr>';
                 return;
             }
 
-            daMostrare.forEach((record) => {
-                let kml = (record.km_percorsi > 0 && record.litri > 0) 
-                    ? (record.km_percorsi / record.litri).toFixed(2) 
+            for (let i = consumiBMW.length - 1; i >= 0; i--) {
+                const record = consumiBMW[i];
+                let kml = (record.km_percorsi > 0 && record.litri > 0)
+                    ? (record.km_percorsi / record.litri).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
                     : '-';
-                
-                let litriStr = record.litri > 0 ? record.litri.toFixed(1) : '-';
-                let kmPercStr = record.km_percorsi > 0 ? record.km_percorsi : '-';
+
+                let litriStr = record.litri > 0 ? record.litri.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-';
+                let costoStr = record.costo > 0 ? record.costo.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-';
+                let kmPercStr = record.km_percorsi > 0 ? record.km_percorsi.toLocaleString('it-IT') : '-';
+                let kmTotStr = record.km ? record.km.toLocaleString('it-IT') : '-';
                 let nota = record.note ? '📄' : '';
                 let dataIt = formattaDataItaliana(record.data);
 
                 tbody.innerHTML += `
                     <tr title="${record.note || ''}">
                         <td>${dataIt || '-'}</td>
-                        <td>${record.km || '-'}</td>
+                        <td>${kmTotStr}</td>
                         <td>${kmPercStr}</td>
                         <td>${litriStr}</td>
+                        <td>${costoStr}</td>
                         <td><strong>${kml}</strong> ${nota}</td>
+                        <td style="white-space:nowrap;">
+                            <button class="row-btn edit-btn" onclick="apriModifica(${i})">✏️</button>
+                            <button class="row-btn delete-btn" onclick="eliminaRecord(${i})">🗑️</button>
+                        </td>
                     </tr>
                 `;
-            });
+            }
+        }
+
+        function ricalcolaSequenziale() {
+            for (let i = 0; i < consumiBMW.length; i++) {
+                if (i === 0) {
+                    consumiBMW[i].km_percorsi = 0;
+                } else {
+                    let kmPrec = parseFloat(consumiBMW[i - 1].km);
+                    let kmAtt = parseFloat(consumiBMW[i].km);
+                    consumiBMW[i].km_percorsi = (!isNaN(kmPrec) && kmAtt > kmPrec) ? kmAtt - kmPrec : 0;
+                }
+                let litri = consumiBMW[i].litri;
+                consumiBMW[i].km_litro = (consumiBMW[i].km_percorsi > 0 && litri > 0)
+                    ? parseFloat((consumiBMW[i].km_percorsi / litri).toFixed(2))
+                    : 0;
+            }
+        }
+
+        function convertiDataPerInput(dataIt) {
+            if (!dataIt) return '';
+            const p = dataIt.split('/');
+            return p.length === 3 ? `${p[2]}-${p[1]}-${p[0]}` : '';
+        }
+
+        function apriModifica(index) {
+            const r = consumiBMW[index];
+            if (!r) return;
+            document.getElementById('editIndex').value = index;
+            document.getElementById('editData').value = convertiDataPerInput(r.data);
+            document.getElementById('editKm').value = r.km;
+            document.getElementById('editCosto').value = r.costo;
+            document.getElementById('editPrezzoLitro').value = r.prezzo_litro;
+            document.getElementById('editNote').value = r.note || '';
+            document.getElementById('modalModifica').style.display = 'flex';
+        }
+
+        function chiudiModifica() {
+            document.getElementById('modalModifica').style.display = 'none';
+        }
+
+        function salvaModifica() {
+            const index = parseInt(document.getElementById('editIndex').value);
+            const rawData = document.getElementById('editData').value;
+            const km = parseFloat(document.getElementById('editKm').value);
+            const costo = parseFloat(document.getElementById('editCosto').value);
+            const prezzo_litro = parseFloat(document.getElementById('editPrezzoLitro').value);
+            const note = document.getElementById('editNote').value;
+
+            if (!rawData || isNaN(km) || isNaN(costo) || isNaN(prezzo_litro) || prezzo_litro <= 0) {
+                alert("Compila tutti i campi correttamente.");
+                return;
+            }
+
+            consumiBMW[index].data = formattaDataItaliana(rawData);
+            consumiBMW[index].km = km;
+            consumiBMW[index].costo = costo;
+            consumiBMW[index].prezzo_litro = prezzo_litro;
+            consumiBMW[index].litri = costo / prezzo_litro;
+            consumiBMW[index].note = note;
+
+            ricalcolaSequenziale();
+            salvaInStorage(consumiBMW);
+            chiudiModifica();
+            aggiornaTabella();
+        }
+
+        function eliminaRecord(index) {
+            if (confirm("Vuoi eliminare questo rifornimento? L'operazione non è reversibile.")) {
+                consumiBMW.splice(index, 1);
+                ricalcolaSequenziale();
+                salvaInStorage(consumiBMW);
+                aggiornaTabella();
+            }
         }
 
         function salvaDati() {
@@ -224,7 +358,6 @@
                 return;
             }
 
-            // Calcolo automatico dei litri
             let litri = costo / prezzo_litro;
 
             let km_percorsi = 0;
@@ -244,26 +377,71 @@
             alert("Rifornimento salvato con successo!");
             aggiornaTabella();
             
+            document.getElementById('km').value = '';
             document.getElementById('costo').value = '';
             document.getElementById('prezzo_litro').value = '';
             document.getElementById('note').value = '';
         }
 
-        function exportExcel() {
+        async function exportCSV() {
             if(consumiBMW.length === 0) {
                 alert("Nessun dato da esportare.");
                 return;
             }
-            const worksheet = XLSX.utils.json_to_sheet(consumiBMW);
-            const workbook = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(workbook, worksheet, "Consumi BMW 440i");
-            XLSX.writeFile(workbook, "Storico_Consumi_BMW440.xlsx");
+
+            let csvRows = [];
+            csvRows.push(["Data", "Km Tot.", "Km Percorsi", "Litri", "Km/L", "Costo Totale", "Prezzo al Litro", "Note"].join(";"));
+
+            consumiBMW.forEach(r => {
+                let data = r.data || '';
+                let km = r.km || 0;
+                let km_perc = r.km_percorsi || 0;
+                let litri = (r.litri || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                let kml = (r.km_litro || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                let costo = (r.costo || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                let prezzo = (r.prezzo_litro || 0).toLocaleString('it-IT', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+                let note = `"${(r.note || '').replace(/"/g, '""')}"`;
+
+                csvRows.push([data, km, km_perc, litri, kml, costo, prezzo, note].join(";"));
+            });
+
+            const csvString = csvRows.join("\r\n");
+
+            if (window.showSaveFilePicker) {
+                try {
+                    const options = {
+                        suggestedName: 'Storico_Consumi_BMW440.csv',
+                        types: [{
+                            description: 'File CSV',
+                            accept: { 'text/csv': ['.csv'] },
+                        }],
+                    };
+                    const handle = await window.showSaveFilePicker(options);
+                    const writable = await handle.createWritable();
+                    await writable.write(csvString);
+                    await writable.close();
+                    alert("File CSV esportato con successo!");
+                    return;
+                } catch (err) {
+                    if (err.name === 'AbortError') return;
+                }
+            }
+
+            const blob = new Blob(["\uFEFF" + csvString], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'Storico_Consumi_BMW440.csv';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
         }
 
         function importExcel() {
             const inputDati = document.getElementById('importFile');
             if(!inputDati.files || inputDati.files.length === 0) {
-                alert("Seleziona prima il file Excel con i dati storici.");
+                alert("Seleziona prima il file con i dati storici.");
                 return;
             }
 
@@ -280,7 +458,7 @@
                     const jsonData = XLSX.utils.sheet_to_json(worksheet, {raw: false});
                     
                     if(jsonData.length === 0) {
-                        alert("Il file Excel selezionato sembra vuoto.");
+                        alert("Il file selezionato sembra vuoto.");
                         return;
                     }
 
@@ -292,16 +470,15 @@
                             let val = row[key];
 
                             if (k === 'data') r.data = formattaDataItaliana(val);
-                            else if (k === 'conta km' || k === 'km') {
+                            else if (k === 'conta km' || k === 'km' || k === 'km tot.') {
                                 if (r.km === 0) r.km = parseNumber(val);
                             }
-                            else if (k === 'importo' || k === 'costo') r.costo = parseNumber(val);
-                            else if (k === '€/lt' || k === 'prezzo_litro') r.prezzo_litro = parseNumber(val);
+                            else if (k === 'importo' || k === 'costo' || k === 'costo totale') r.costo = parseNumber(val);
+                            else if (k === '€/lt' || k === 'prezzo_litro' || k === 'prezzo al litro') r.prezzo_litro = parseNumber(val);
                             else if (k === 'litri') r.litri = parseNumber(val);
                             else if (k === 'note') r.note = (val || '').toString();
                         }
                         
-                        // Calcola litri se mancanti ma ci sono costo e prezzo al litro
                         if (r.litri === 0 && r.costo > 0 && r.prezzo_litro > 0) {
                             r.litri = r.costo / r.prezzo_litro;
                         }
@@ -309,12 +486,11 @@
                         return r;
                     }).filter(r => r.data !== '' && r.km > 0);
 
-                    // Ricalcolo sequenziale pulito
                     for (let i = 0; i < nuoviDati.length; i++) {
                         if (i > 0 && nuoviDati[i].km > nuoviDati[i-1].km) {
                             nuoviDati[i].km_percorsi = nuoviDati[i].km - nuoviDati[i-1].km;
                         }
-                        if (nuoviDati[i].litri === 0 && nuoviDati[i].costo > 0 && nuoviDati[i].prezzo_litro > 0) {
+                        if (nuoviDati[i].litri === 0 && nuoviDati[i].costo > 0 && nouveauxDati[i].prezzo_litro > 0) {
                             nuoviDati[i].litri = nuoviDati[i].costo / nuoviDati[i].prezzo_litro;
                         }
                         if (nuoviDati[i].km_percorsi > 0 && nuoviDati[i].litri > 0) {
