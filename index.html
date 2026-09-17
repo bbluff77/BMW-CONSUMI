@@ -469,7 +469,7 @@
                         if (nuoviDati[i].litri === 0 && nuoviDati[i].costo > 0 && nuoviDati[i].prezzo_litro > 0) {
                             nuoviDati[i].litri = nuoviDati[i].costo / nuoviDati[i].prezzo_litro;
                         }
-                        if (nuoviDati[i].km_percorsi > 0 && novosDati[i].litri > 0) {
+                        if (nuoviDati[i].km_percorsi > 0 && nuoviDati[i].litri > 0) {
                             nuoviDati[i].km_litro = parseFloat((nuoviDati[i].km_percorsi / nuoviDati[i].litri).toFixed(2));
                         }
                     }
