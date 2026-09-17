@@ -51,7 +51,7 @@
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
             margin-bottom: 15px;
         }
-        input, button, textarea {
+        input, button {
             width: 100%;
             padding: 12px;
             margin: 8px 0;
@@ -128,13 +128,8 @@
     </div>
 
     <div class="card" style="background: #eef6fc; border: 1px solid var(--bmw-light-blue);">
-        <h3 style="margin-top:0; color: var(--bmw-blue);">Importa / Recupera Storico</h3>
-        <button class="import-btn" onclick="mostraBoxBackup()" style="background-color: #17a2b8; margin-bottom: 10px;">📋 Mostra Dati in Testo (Backup di sicurezza)</button>
-        <div id="backupContainer" style="display:none;">
-            <p style="font-size:11px; color:#d9534f; margin:0 0 5px 0;">Copia tutto il testo qui sotto se vuoi salvarlo al sicuro:</p>
-            <textarea id="backupText" rows="6" readonly style="font-size:11px; background:#f8f9fa;"></textarea>
-        </div>
-        <input type="file" id="importFile" accept=".xlsx, .xls, .csv" style="margin-top:10px;">
+        <h3 style="margin-top:0; color: var(--bmw-blue);">Importa Storico</h3>
+        <input type="file" id="importFile" accept=".xlsx, .xls, .csv">
         <button class="import-btn" onclick="importExcel()">Carica File Storico</button>
     </div>
 
@@ -234,17 +229,6 @@
 
         let consumiBMW = caricaDaStorage();
 
-        function mostraBoxBackup() {
-            const container = document.getElementById('backupContainer');
-            const textarea = document.getElementById('backupText');
-            if (container.style.display === 'none') {
-                textarea.value = JSON.stringify(consumiBMW, null, 2);
-                container.style.display = 'block';
-            } else {
-                container.style.display = 'none';
-            }
-        }
-
         function exportCSV() {
             if (consumiBMW.length === 0) {
                 alert("Nessun dato da esportare.");
@@ -268,8 +252,6 @@
             });
 
             const csvString = csvRows.join("\r\n");
-            
-            // Metodo Data URI compatibile al 100% con Android WebView e Median
             const encodedUri = 'data:text/csv;charset=utf-8,' + encodeURIComponent("\uFEFF" + csvString);
             const link = document.createElement('a');
             link.setAttribute('href', encodedUri);
@@ -482,12 +464,12 @@
 
                     for (let i = 0; i < nuoviDati.length; i++) {
                         if (i > 0 && nuoviDati[i].km > nuoviDati[i-1].km) {
-                            nuoviDati[i].km_percorsi = nuevosDati[i].km - nuoviDati[i-1].km;
+                            nuoviDati[i].km_percorsi = nuoviDati[i].km - nuoviDati[i-1].km;
                         }
-                        if (nuoviDati[i].litri === 0 && nuoviDati[i].costo > 0 && nouveauxDati[i].prezzo_litro > 0) {
+                        if (nuoviDati[i].litri === 0 && nuoviDati[i].costo > 0 && nuoviDati[i].prezzo_litro > 0) {
                             nuoviDati[i].litri = nuoviDati[i].costo / nuoviDati[i].prezzo_litro;
                         }
-                        if (nuoviDati[i].km_percorsi > 0 && nuoviDati[i].litri > 0) {
+                        if (nuoviDati[i].km_percorsi > 0 && novosDati[i].litri > 0) {
                             nuoviDati[i].km_litro = parseFloat((nuoviDati[i].km_percorsi / nuoviDati[i].litri).toFixed(2));
                         }
                     }
